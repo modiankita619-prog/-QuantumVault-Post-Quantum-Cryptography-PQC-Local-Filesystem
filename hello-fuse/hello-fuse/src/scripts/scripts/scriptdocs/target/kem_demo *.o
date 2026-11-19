@@ -1,0 +1,15 @@
+quantumvault/
+├── .gitignore                  (content below)
+├── README.md                   ← README.md
+├── c_demo/
+│   ├── qv_crypto.h             ← c_demo_qv_crypto.h
+│   ├── qv_crypto.c             ← c_demo_qv_crypto.c
+│   └── kem_demo.c              ← c_demo_kem_demo.c
+├── hello-fuse/
+│   ├── Cargo.toml              ← hello-fuse_Cargo.toml
+│   └── src/main.rs             ← hello-fuse_src_main.rs
+└── scripts/
+    ├── 01_install_deps.sh      ← scripts_01_install_deps.sh
+    ├── 02_build_liboqs.sh      ← scripts_02_build_liboqs.sh
+    ├── 03_run_c_demo.sh        ← scripts_03_run_c_demo.sh
+    └── 04_run_hello_fuse.sh    ← scripts_04_run_hello_fuse.sh
