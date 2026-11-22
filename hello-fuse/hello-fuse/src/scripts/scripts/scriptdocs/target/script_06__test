@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Week 2 automated check: encrypt-on-write, decrypt-on-read, persistence,
+# OpenSSL cannot read the stored file, and tamper detection.
+cd "$(dirname "$0")/../quantumvault" || exit 1
+source ~/.cargo/env 2>/dev/null || true
+BIN=./target/release/quantumvault
+[ -x "$BIN" ] || { echo "Build first: bash scripts/05_build_week2.sh"; exit 1; }
+
+W=$(mktemp -d /tmp/qv-test.XXXXXX)
+KEYS=$W/keys; DATA=$W/data; MNT=$W/mnt; LOG=$W/vault.log
+mkdir -p "$DATA" "$MNT"
+FAILED=0
+PID=""
+
+ok()  { echo "  [PASS] $1"; }
+bad() { echo "  [FAIL] $1"; FAILED=1; }
+
+start_vault() {
+  "$BIN" mount "$KEYS" "$DATA" "$MNT" >>"$LOG" 2>&1 &
+  PID=$!
+  for _ in $(seq 1 50); do
+    mountpoint -q "$MNT" && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+stop_vault() {
+  fusermount3 -u "$MNT" 2>/dev/null
+  wait "$PID" 2>/dev/null
+}
+
+finish() {
+  rm -rf "$W"
+  echo
+  if [ "$FAILED" -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi
+  exit "$FAILED"
+}
+
+echo "== 1. Generate ML-KEM-768 keypair"
+if "$BIN" keygen "$KEYS" >/dev/null; then ok "keypair generated"; else bad "keygen failed"; finish; fi
+
+echo "== 2. Mount the vault and write a file"
+if start_vault; then ok "vault mounted"; else bad "mount failed"; cat "$LOG"; stop_vault; finish; fi
+echo "TOP SECRET BLUEPRINT v1" > "$MNT/blueprint.txt"
+if [ "$(cat "$MNT/blueprint.txt")" = "TOP SECRET BLUEPRINT v1" ]; then
+  ok "plaintext reads back correctly through the vault"
+else
+  bad "read-back through the vault failed"
+fi
+
+echo "== 3. Inspect what is stored on disk"
+F="$DATA/blueprint.txt.qv"
+if [ -f "$F" ]; then ok "encrypted file exists: blueprint.txt.qv"; else bad "no .qv file on disk"; stop_vault; finish; fi
+SIZE=$(stat -c %s "$F")
+if [ "$SIZE" -gt 1100 ]; then ok "stored size is $SIZE bytes (plaintext was 24 bytes)"; else bad "stored file too small: $SIZE"; fi
+if grep -aq "TOP SECRET" "$F"; then bad "plaintext found in stored file"; else ok "no plaintext in the stored file"; fi
+
+echo "== 4. OpenSSL cannot decrypt it"
+OUT=$(openssl enc -d -aes-256-cbc -pbkdf2 -in "$F" -pass pass:test 2>/dev/null)
+if echo "$OUT" | grep -aq "TOP SECRET"; then bad "OpenSSL recovered plaintext"; else ok "OpenSSL cannot read the file"; fi
+
+echo "== 5. Unmount, remount, data persists"
+stop_vault
+if start_vault; then
+  if [ "$(cat "$MNT/blueprint.txt")" = "TOP SECRET BLUEPRINT v1" ]; then ok "file decrypted after remount"; else bad "file unreadable after remount"; fi
+else
+  bad "remount failed"
+fi
+stop_vault
+
+echo "== 6. Tamper with one byte on disk"
+OFF=1120
+B=$(dd if="$F" bs=1 skip=$OFF count=1 2>/dev/null | xxd -p)
+NEW=$(printf '%02x' $(( 0x$B ^ 0xFF )))
+printf "\\x$NEW" | dd of="$F" bs=1 seek=$OFF conv=notrunc 2>/dev/null
+if start_vault; then
+  if cat "$MNT/blueprint.txt" >/dev/null 2>&1; then bad "tampered file was accepted"; else ok "tampered file rejected (I/O error)"; fi
+  if grep -q "decryption failed" "$LOG"; then ok "vault logged the integrity failure"; else bad "no integrity message in log"; fi
+else
+  bad "remount failed"
+fi
+stop_vault
+
+finish
