@@ -1,1 +1,5 @@
 **/target/
+
+# QuantumVault compiled C executables
+/src/c_crypto/mlkem_demo
+/src/c_crypto/aes_gcm_demo
