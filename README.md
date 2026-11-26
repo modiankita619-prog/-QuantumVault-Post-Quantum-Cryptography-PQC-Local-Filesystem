@@ -1,32 +1,73 @@
 # QuantumVault: Post-Quantum Cryptography (PQC) Local Filesystem
 
-## Project Overview
+## 1. Project Overview
 
-QuantumVault is a Linux-based encrypted virtual filesystem designed to protect files using post-quantum cryptographic algorithms.
+QuantumVault is an educational project exploring a Linux-based virtual
+filesystem designed to protect files using post-quantum cryptography.
 
-Files written through the mounted filesystem will be encrypted before being stored on the physical filesystem. Authorized reads will transparently decrypt the files.
+The intended system will encrypt files before storing them on the physical
+filesystem and transparently decrypt them when authorized users read them.
 
-## Project Objectives
+The current development provides separate working prototypes for
+post-quantum cryptographic operations and a writable Rust/FUSE filesystem.
+Full integration is future work.
 
-- Implement post-quantum key establishment using ML-KEM-768.
-- Use AES-256-GCM for authenticated file encryption.
-- Implement digital signatures using ML-DSA.
+## 2. Project Objectives
+
+- Explore post-quantum key establishment using ML-KEM-768.
+- Use AES-256-GCM for authenticated encryption.
+- Explore digital signatures using ML-DSA.
 - Develop a Linux virtual filesystem using Rust and FUSE.
 - Integrate cryptographic operations through C and Rust FFI.
-- Implement secure key handling and a command-line interface.
+- Develop secure key handling and command-line functionality.
 
-## Technology Stack
+## 3. Technology Stack
 
 - C
 - Rust
-- liboqs
+- OpenSSL
 - ML-KEM-768 (FIPS 203)
-- ML-DSA (FIPS 204)
+- HKDF-SHA256
 - AES-256-GCM
 - FUSE
-- Linux
+- Linux / Kali Linux under WSL2
 
-## Project Structure
+Note: OpenSSL was used for the working cryptographic demonstrations.
+The planned liboqs build was not completed successfully.
+
+## 4. Implemented Features
+
+### Cryptographic Component
+
+- ML-KEM-768 key generation, encapsulation and decapsulation demonstration.
+- AES-256-GCM encryption and decryption demonstration.
+- Integrated ML-KEM-768 shared-secret establishment.
+- HKDF-SHA256 key derivation.
+- AES-256-GCM authenticated encryption and decryption.
+- Authentication-tag tamper detection.
+
+### Filesystem Component
+
+- Rust-based FUSE virtual filesystem prototype.
+- Directory listing.
+- Virtual file reading and writing.
+- Existing file content replacement.
+- File-size handling.
+
+The current FUSE filesystem maintains file content in memory.
+
+## 5. Features Planned for Future Development
+
+- Transparent encryption of files through the FUSE filesystem.
+- Transparent decryption during file reads.
+- Persistent encrypted file storage.
+- Rust-to-C integration using FFI.
+- ML-DSA digital signature generation and verification.
+- Persistent cryptographic key management.
+- Master-password-based access control.
+- Complete command-line interface.
+
+## 6. Project Structure
 
 ```text
 QuantumVault-group/
@@ -36,24 +77,14 @@ QuantumVault-group/
 ├── include/
 ├── tests/
 ├── docs/
+│   ├── project_architecture.md
+│   ├── development_log.md
+│   ├── week_1.md
+│   ├── week_2.md
+│   ├── cryptography.md
+│   ├── fuse_filesystem.md
+│   ├── testing.md
+│   ├── limitations_and_future_work.md
+│   └── contributions.md
 ├── scripts/
 └── README.md
-```
-
-## Development Plan
-
-1. Set up the cryptographic library and verify ML-KEM-768.
-2. Develop a basic Rust/FUSE filesystem.
-3. Integrate C cryptographic functions with Rust.
-4. Implement transparent authenticated file encryption and decryption.
-5. Add ML-DSA digital signatures.
-6. Implement secure key management and CLI functionality.
-7. Test and document the complete system.
-
-## Project Status
-
-Initial repository structure created. Development and testing are in progress.
-
-## Security Note
-
-This project is intended for educational and research purposes. Security claims will depend on implementation, testing and review.
