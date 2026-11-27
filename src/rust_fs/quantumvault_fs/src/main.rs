@@ -1,3 +1,5 @@
+mod ffi;
+mod storage;
 use fuser::{
     Config, Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags, Generation, INodeNo,
     LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory,
@@ -15,13 +17,18 @@ const FILE: u64 = 2;
 
 struct QuantumVaultFS {
     content: Mutex<Vec<u8>>,
+    storage: storage::EncryptedStorage,
 }
 
 impl QuantumVaultFS {
-    fn new() -> Self {
-        Self {
-            content: Mutex::new(Vec::new()),
-        }
+    fn new() -> Result<Self, String> {
+        let storage = storage::EncryptedStorage::new()?;
+        let content = storage.load()?;
+
+        Ok(Self {
+            content: Mutex::new(content),
+            storage,
+        })
     }
 }
 
@@ -95,7 +102,20 @@ impl Filesystem for QuantumVaultFS {
             let mut content = self.content.lock().unwrap();
 
             if let Some(new_size) = size {
-                content.resize(new_size as usize, 0);
+                let Ok(new_size) = usize::try_from(new_size) else {
+                    reply.error(Errno::EIO);
+                    return;
+                };
+
+                let mut updated = content.clone();
+                updated.resize(new_size, 0);
+
+                if self.storage.save(&updated).is_err() {
+                    reply.error(Errno::EIO);
+                    return;
+                }
+
+                *content = updated;
             }
 
             reply.attr(&TTL, &file_attr(content.len() as u64));
@@ -129,12 +149,25 @@ impl Filesystem for QuantumVaultFS {
             return;
         }
 
-        let content = self.content.lock().unwrap();
+        let content = match self.storage.load() {
+            Ok(data) => data,
+            Err(_) => {
+                reply.error(Errno::EIO);
+                return;
+            }
+        };
+
         let start = offset as usize;
+
         if start >= content.len() {
             reply.data(&[]);
         } else {
-            let end = (start + size as usize).min(content.len());
+            let Some(requested_end) = start.checked_add(size as usize) else {
+                reply.error(Errno::EIO);
+                return;
+            };
+
+            let end = requested_end.min(content.len());
             reply.data(&content[start..end]);
         }
     }
@@ -158,14 +191,29 @@ impl Filesystem for QuantumVaultFS {
 
         let mut content = self.content.lock().unwrap();
         let start = offset as usize;
-        if content.len() < start {
-            content.resize(start, 0);
+
+        let Some(end) = start.checked_add(data.len()) else {
+            reply.error(Errno::EIO);
+            return;
+        };
+
+        let mut updated = content.clone();
+
+        if updated.len() < start {
+            updated.resize(start, 0);
         }
-        let end = start + data.len();
-        if content.len() < end {
-            content.resize(end, 0);
+        if updated.len() < end {
+            updated.resize(end, 0);
         }
-        content[start..end].copy_from_slice(data);
+
+        updated[start..end].copy_from_slice(data);
+
+        if self.storage.save(&updated).is_err() {
+            reply.error(Errno::EIO);
+            return;
+        }
+
+        *content = updated;
         reply.written(data.len() as u32);
     }
 
@@ -180,6 +228,11 @@ impl Filesystem for QuantumVaultFS {
         reply: ReplyCreate,
     ) {
         if parent == INodeNo(ROOT) && name == OsStr::new("hello.txt") {
+            if self.storage.ensure_initialized().is_err() {
+                reply.error(Errno::EIO);
+                return;
+            }
+
             let content = self.content.lock().unwrap();
             reply.created(
                 &TTL,
@@ -244,6 +297,8 @@ fn main() {
         .mount_options
         .extend([MountOption::FSName("quantumvault".to_string())]);
 
-    fuser::mount(QuantumVaultFS::new(), mountpoint, &config)
-        .expect("Failed to mount QuantumVault filesystem");
+    let filesystem =
+        QuantumVaultFS::new().expect("Failed to initialize encrypted QuantumVault storage");
+
+    fuser::mount(filesystem, mountpoint, &config).expect("Failed to mount QuantumVault filesystem");
 }
