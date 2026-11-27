@@ -6,3 +6,11 @@
 
 # Generated integrated crypto executable
 /src/c_crypto/quantumvault_crypto
+
+# Local QuantumVault keys and secrets
+.quantumvault/
+
+# Generated C build artifacts
+*.o
+*.a
+*.so
